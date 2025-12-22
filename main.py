@@ -7,11 +7,12 @@ import os
 import sqlite3
 from datetime import datetime
 
+
 def main(page: ft.Page):
     db.init_db()
     page.title = "TrackTool Pro"
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.window_width = 450 
+    page.window_width = 450
 
     # --- FUNCTION 1: PDF Reporting ---
     def create_pdf(e):
@@ -19,8 +20,10 @@ def main(page: ft.Page):
         report_type = e.control.text.split()[0]
         filename = reports.generate_report(report_type)
         # os.startfile is specific to Windows
-        os.startfile(filename) 
-        page.snack_bar = ft.SnackBar(ft.Text(f"Generated {filename}"), bgcolor=ft.Colors.BLUE)
+        os.startfile(filename)
+        page.snack_bar = ft.SnackBar(
+            ft.Text(f"Generated {filename}"), bgcolor=ft.Colors.BLUE
+        )
         page.snack_bar.open = True
         page.update()
 
@@ -34,15 +37,14 @@ def main(page: ft.Page):
                 conn = sqlite3.connect("inventory.db")
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO tools (qr_id, name, status) VALUES (?, ?, 'Available')", 
-                    (qr_id, new_name.value)
+                    "INSERT INTO tools (qr_id, name, status) VALUES (?, ?, 'Available')",
+                    (qr_id, new_name.value),
                 )
                 conn.commit()
                 conn.close()
                 page.dialog.open = False
                 page.snack_bar = ft.SnackBar(
-                    ft.Text(f"Registered {new_name.value}!"), 
-                    bgcolor=ft.Colors.GREEN
+                    ft.Text(f"Registered {new_name.value}!"), bgcolor=ft.Colors.GREEN
                 )
                 page.snack_bar.open = True
                 refresh_dashboard()
@@ -51,7 +53,7 @@ def main(page: ft.Page):
         page.dialog = ft.AlertDialog(
             title=ft.Text(f"Register New QR: {qr_id}"),
             content=new_name,
-            actions=[ft.TextButton("Save Tool", on_click=save_new_tool)]
+            actions=[ft.TextButton("Save Tool", on_click=save_new_tool)],
         )
         page.dialog.open = True
         page.update()
@@ -59,15 +61,17 @@ def main(page: ft.Page):
     def handle_scanned_tool(qr_id):
         """Determines if a tool needs registration, checkout, or return."""
         tool = db.get_tool_by_id(qr_id)
-        
+
         if not tool:
             # Trigger the registration function if tool is missing from DB
             show_registration_dialog(qr_id)
-        elif tool['status'] == 'Available':
+        elif tool["status"] == "Available":
             show_checkout_dialog(qr_id)
         else:
             db.update_tool_status(qr_id, "Warehouse", "Available", None)
-            page.snack_bar = ft.SnackBar(ft.Text(f"Tool {qr_id} Returned!"), bgcolor=ft.Colors.GREEN)
+            page.snack_bar = ft.SnackBar(
+                ft.Text(f"Tool {qr_id} Returned!"), bgcolor=ft.Colors.GREEN
+            )
             page.snack_bar.open = True
             refresh_dashboard()
         page.update()
@@ -84,7 +88,7 @@ def main(page: ft.Page):
 
             status = "Off-Site" if overnight.value else "In Use"
             return_date = "Next Day" if overnight.value else "Today"
-            
+
             db.update_tool_status(qr_id, worker_name.value, status, return_date)
             page.dialog.open = False
             refresh_dashboard()
@@ -93,7 +97,7 @@ def main(page: ft.Page):
         page.dialog = ft.AlertDialog(
             title=ft.Text(f"Check-Out: {qr_id}"),
             content=ft.Column([worker_name, overnight], tight=True),
-            actions=[ft.TextButton("Confirm", on_click=confirm_checkout)]
+            actions=[ft.TextButton("Confirm", on_click=confirm_checkout)],
         )
         page.dialog.open = True
         page.update()
@@ -103,16 +107,20 @@ def main(page: ft.Page):
         found_qr = None
         while True:
             ret, frame = cap.read()
-            if not ret: break
-            for barcode in decode(frame):
-                found_qr = barcode.data.decode('utf-8')
+            if not ret:
                 break
-            if found_qr: break
+            for barcode in decode(frame):
+                found_qr = barcode.data.decode("utf-8")
+                break
+            if found_qr:
+                break
             cv2.imshow("TrackTool Scanner (Q to Quit)", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'): break
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
         cap.release()
         cv2.destroyAllWindows()
-        if found_qr: handle_scanned_tool(found_qr)
+        if found_qr:
+            handle_scanned_tool(found_qr)
 
     def refresh_dashboard():
         tool_list.controls.clear()
@@ -129,23 +137,32 @@ def main(page: ft.Page):
 
     # --- UI Layout ---
     tool_list = ft.ListView(expand=True, spacing=10)
-    
+
     page.add(
         ft.AppBar(title=ft.Text("TrackTool Pro"), bgcolor=ft.Colors.AMBER_700),
-        ft.Row([
-            ft.ElevatedButton("Weekly Report", icon=ft.Icons.PICTURE_AS_PDF, on_click=create_pdf),
-            ft.ElevatedButton("Monthly Report", icon=ft.Icons.PICTURE_AS_PDF, on_click=create_pdf),
-        ], alignment=ft.MainAxisAlignment.CENTER),
+        ft.Row(
+            [
+                ft.ElevatedButton(
+                    "Weekly Report", icon=ft.Icons.PICTURE_AS_PDF, on_click=create_pdf
+                ),
+                ft.ElevatedButton(
+                    "Monthly Report", icon=ft.Icons.PICTURE_AS_PDF, on_click=create_pdf
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
         ft.Divider(),
         ft.Text("Active Inventory", size=20, weight="bold"),
         tool_list,
         ft.FloatingActionButton(
-            icon=ft.Icons.QR_CODE_SCANNER, 
-            text="Scan Tool", 
-            on_click=open_scanner, 
-            bgcolor=ft.Colors.AMBER_ACCENT_400
-        )
+            icon=ft.Icons.QR_CODE_SCANNER,
+            text="Scan Tool",
+            on_click=open_scanner,
+            bgcolor=ft.Colors.AMBER_ACCENT_400,
+        ),
     )
     refresh_dashboard()
 
-ft.app(target=main)
+
+# This forces the app to run as a web portal, preventing desktop errors
+ft.app(target=main, view=ft.AppView.WEB_BROWSER)
