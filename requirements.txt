@@ -1,3 +1,4 @@
 flet
-opencv-python
+opencv-python-headless
 pyzbar
+reportlab
