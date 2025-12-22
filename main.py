@@ -164,5 +164,9 @@ def main(page: ft.Page):
     refresh_dashboard()
 
 
-# This forces the app to run as a web portal, preventing desktop errors
-ft.app(target=main, view=ft.AppView.WEB_BROWSER)
+if __name__ == "__main__":
+    import os
+
+    # Use the port Render provides, or default to 8000 for local testing
+    port = int(os.getenv("PORT", 8000))
+    ft.app(target=main, view=None, port=port)
