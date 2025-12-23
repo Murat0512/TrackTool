@@ -5,18 +5,21 @@ import reports
 import os
 import sqlite3
 import numpy as np
+import time
 
 def main(page: ft.Page):
+    # Initialize Database and Settings
     db.init_db()
     page.title = "TrackTool Pro"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.window_width = 450
     detector = cv2.QRCodeDetector()
 
-    # --- 1. UI COMPONENT ---
+    # --- 1. UI COMPONENTS ---
     tool_list = ft.ListView(expand=True, spacing=10)
 
-    # --- 2. CORE FUNCTIONS ---
+    # --- 2. DIALOGS & LOGIC ---
+
     def refresh_dashboard():
         tool_list.controls.clear()
         for tool in db.get_all_tools():
@@ -44,6 +47,7 @@ def main(page: ft.Page):
                 conn.close()
                 page.dialog.open = False
                 refresh_dashboard()
+        
         page.dialog = ft.AlertDialog(
             title=ft.Text(f"Register New Tool: {qr_id}"),
             content=new_name,
@@ -59,6 +63,7 @@ def main(page: ft.Page):
                 db.update_tool_status(qr_id, worker_name.value, "In Use", "Today")
                 page.dialog.open = False
                 refresh_dashboard()
+        
         page.dialog = ft.AlertDialog(
             title=ft.Text("Check-Out Machine"),
             content=worker_name,
@@ -70,49 +75,54 @@ def main(page: ft.Page):
     def handle_scanned_tool(qr_id):
         tool = db.get_tool_by_id(qr_id)
         if not tool:
-            show_registration_dialog(qr_id)
+            show_registration_dialog(qr_id) 
         elif tool["status"] == "Available":
-            show_checkout_dialog(qr_id)
+            show_checkout_dialog(qr_id)    
         else:
             db.update_tool_status(qr_id, "Warehouse", "Available", None)
             refresh_dashboard()
 
-    # --- 3. THE "VITAL" SCANNER LOGIC ---
+    # --- 3. THE SCANNER BRIDGE (FIXED PATHS) ---
+
     def on_scan_result(e: ft.FilePickerResultEvent):
         if e.files:
-            page.snack_bar = ft.SnackBar(ft.Text("Uploading and Scanning..."))
+            page.snack_bar = ft.SnackBar(ft.Text("Scanning... Please wait."))
             page.snack_bar.open = True
             page.update()
 
             try:
                 for f in e.files:
-                    # VITAL STEP: This moves the file from phone to Render server
+                    # Physically upload file to Render
                     page.upload_files([
-                        ft.FilePickerUploadFile(
-                            f.name, 
-                            upload_url=page.get_upload_url(f.name, 600)
-                        )
+                        ft.FilePickerUploadFile(f.name, upload_url=page.get_upload_url(f.name, 600))
                     ])
                     
-                    # Look for the file in the correct single 'uploads' folder
+                    # FIX: Look in only ONE 'uploads' folder
                     path = os.path.join("uploads", f.name)
 
-                    # Read and scan the image
+                    # Wait for the file to finish writing
+                    retries = 0
+                    while not os.path.exists(path) and retries < 10:
+                        time.sleep(0.5)
+                        retries += 1
+
+                    # Scan the file with OpenCV
                     img = cv2.imread(path)
                     if img is not None:
                         data, _, _ = detector.detectAndDecode(img)
                         if data:
                             handle_scanned_tool(data)
                         else:
-                            page.snack_bar = ft.SnackBar(ft.Text("QR not found. Try a closer photo."), bgcolor=ft.Colors.RED)
+                            page.snack_bar = ft.SnackBar(ft.Text("QR not detected. Try again."), bgcolor=ft.Colors.RED)
                     
-                    # Clean up the file after scanning
+                    # Cleanup server space
                     if os.path.exists(path):
                         os.remove(path)
 
             except Exception as ex:
                 print(f"Scan Error: {ex}")
 
+            # FIX: Ensure snackbar closes and page updates to reset the scanner
             page.snack_bar.open = False
             page.update()
 
@@ -140,5 +150,5 @@ if __name__ == "__main__":
     if not os.path.exists("uploads"):
         os.makedirs("uploads")
     port = int(os.getenv("PORT", 8000))
-    # 'upload_dir' MUST be set for the upload command to work
+    # Corrected app call for Render
     ft.app(target=main, view=None, port=port, upload_dir="uploads")
