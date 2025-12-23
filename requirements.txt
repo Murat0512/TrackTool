@@ -1,5 +1,5 @@
 flet
 flet-web
 opencv-python-headless
-pyzbar
+qreader
 reportlab

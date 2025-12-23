@@ -1,11 +1,14 @@
 import flet as ft
 import cv2
-from pyzbar.pyzbar import decode
+from qreader import QReader
 import database as db
 import reports  # Handles the PDF generation logic
 import os
 import sqlite3
 from datetime import datetime
+
+# Initialize the reader once globally to keep the app fast
+reader = QReader()
 
 
 def main(page: ft.Page):
@@ -20,7 +23,8 @@ def main(page: ft.Page):
         report_type = e.control.text.split()[0]
         filename = reports.generate_report(report_type)
         # os.startfile is specific to Windows
-        os.startfile(filename)
+        if os.name == "nt":
+            os.startfile(filename)
         page.snack_bar = ft.SnackBar(
             ft.Text(f"Generated {filename}"), bgcolor=ft.Colors.BLUE
         )
@@ -63,7 +67,6 @@ def main(page: ft.Page):
         tool = db.get_tool_by_id(qr_id)
 
         if not tool:
-            # Trigger the registration function if tool is missing from DB
             show_registration_dialog(qr_id)
         elif tool["status"] == "Available":
             show_checkout_dialog(qr_id)
@@ -102,6 +105,7 @@ def main(page: ft.Page):
         page.dialog.open = True
         page.update()
 
+    # --- UPDATED: Web-Compatible Scanner Logic ---
     def open_scanner(e):
         cap = cv2.VideoCapture(0)
         found_qr = None
@@ -109,14 +113,18 @@ def main(page: ft.Page):
             ret, frame = cap.read()
             if not ret:
                 break
-            for barcode in decode(frame):
-                found_qr = barcode.data.decode("utf-8")
+
+            # Use qreader to detect and decode
+            # It returns a list of results, we take the first one
+            results = reader.detect_and_decode(image=frame)
+            if results and results[0]:
+                found_qr = results[0]
                 break
-            if found_qr:
-                break
+
             cv2.imshow("TrackTool Scanner (Q to Quit)", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
+
         cap.release()
         cv2.destroyAllWindows()
         if found_qr:
@@ -166,7 +174,8 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     import os
+
     # Render assigns a port via this environment variable
     port = int(os.getenv("PORT", 8000))
-    # view=None forces it to start as a web server
+    # view=None ensures the app starts as a web server only
     ft.app(target=main, view=None, port=port)
