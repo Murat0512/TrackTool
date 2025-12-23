@@ -166,7 +166,7 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     import os
-    # Render assigns a dynamic port; we must use it.
+    # Render assigns a port via this environment variable
     port = int(os.getenv("PORT", 8000))
-    # We use view=None to tell Flet to act purely as a web server.
+    # view=None forces it to start as a web server
     ft.app(target=main, view=None, port=port)
