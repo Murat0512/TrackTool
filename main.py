@@ -7,18 +7,16 @@ import sqlite3
 import numpy as np
 
 def main(page: ft.Page):
-    # Basic Page Setup
     db.init_db()
     page.title = "TrackTool Pro"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.window_width = 450
     detector = cv2.QRCodeDetector()
 
-    # --- 1. DEFINE UI COMPONENTS ---
+    # --- 1. UI COMPONENT ---
     tool_list = ft.ListView(expand=True, spacing=10)
 
-    # --- 2. DEFINE HELPER FUNCTIONS ---
-
+    # --- 2. CORE FUNCTIONS ---
     def refresh_dashboard():
         tool_list.controls.clear()
         for tool in db.get_all_tools():
@@ -32,17 +30,8 @@ def main(page: ft.Page):
             )
         page.update()
 
-    def create_pdf(e):
-        report_type = e.control.text.split()[0]
-        filename = reports.generate_report(report_type)
-        page.launch_url(f"/{filename}")
-        page.snack_bar = ft.SnackBar(ft.Text(f"Opening {filename}..."))
-        page.snack_bar.open = True
-        page.update()
-
     def show_registration_dialog(qr_id):
-        new_name = ft.TextField(label="Machine Name (e.g., Excavator)")
-        
+        new_name = ft.TextField(label="Machine Name")
         def save_new_tool(e):
             if new_name.value:
                 conn = sqlite3.connect("inventory.db")
@@ -55,9 +44,8 @@ def main(page: ft.Page):
                 conn.close()
                 page.dialog.open = False
                 refresh_dashboard()
-
         page.dialog = ft.AlertDialog(
-            title=ft.Text(f"Register New QR: {qr_id}"),
+            title=ft.Text(f"Register New Tool: {qr_id}"),
             content=new_name,
             actions=[ft.TextButton("Save", on_click=save_new_tool)],
         )
@@ -66,13 +54,11 @@ def main(page: ft.Page):
 
     def show_checkout_dialog(qr_id):
         worker_name = ft.TextField(label="Worker Name")
-        
         def confirm_checkout(e):
             if worker_name.value:
                 db.update_tool_status(qr_id, worker_name.value, "In Use", "Today")
                 page.dialog.open = False
                 refresh_dashboard()
-
         page.dialog = ft.AlertDialog(
             title=ft.Text("Check-Out Machine"),
             content=worker_name,
@@ -91,7 +77,7 @@ def main(page: ft.Page):
             db.update_tool_status(qr_id, "Warehouse", "Available", None)
             refresh_dashboard()
 
-    # --- 3. CORRECTED UPLOAD & SCAN LOGIC ---
+    # --- 3. THE "VITAL" SCANNER LOGIC ---
     def on_scan_result(e: ft.FilePickerResultEvent):
         if e.files:
             page.snack_bar = ft.SnackBar(ft.Text("Uploading and Scanning..."))
@@ -99,44 +85,46 @@ def main(page: ft.Page):
             page.update()
 
             try:
-                # STEP 1: Upload the file to the server
                 for f in e.files:
-                    page.upload_files(
-                        [ft.FilePickerUploadFile(f.name, upload_url=page.get_upload_url(f.name, 600))]
-                    )
+                    # VITAL STEP: This moves the file from phone to Render server
+                    page.upload_files([
+                        ft.FilePickerUploadFile(
+                            f.name, 
+                            upload_url=page.get_upload_url(f.name, 600)
+                        )
+                    ])
                     
-                    # STEP 2: Wait briefly and define the path correctly
-                    # We check the 'uploads' folder directly
+                    # Look for the file in the correct single 'uploads' folder
                     path = os.path.join("uploads", f.name)
-                    
-                    # STEP 3: Read and Decode
+
+                    # Read and scan the image
                     img = cv2.imread(path)
                     if img is not None:
                         data, _, _ = detector.detectAndDecode(img)
                         if data:
                             handle_scanned_tool(data)
                         else:
-                            page.snack_bar = ft.SnackBar(ft.Text("QR not detected. Try a closer photo."), bgcolor=ft.Colors.RED)
+                            page.snack_bar = ft.SnackBar(ft.Text("QR not found. Try a closer photo."), bgcolor=ft.Colors.RED)
                     
-                    # STEP 4: Cleanup to keep server light
+                    # Clean up the file after scanning
                     if os.path.exists(path):
                         os.remove(path)
-            
+
             except Exception as ex:
                 print(f"Scan Error: {ex}")
-            
+
             page.snack_bar.open = False
             page.update()
 
-    # Initialize Picker
+    # --- 4. UI SETUP ---
     scan_picker = ft.FilePicker(on_result=on_scan_result)
     page.overlay.append(scan_picker)
 
     page.add(
         ft.AppBar(title=ft.Text("TrackTool Pro"), bgcolor=ft.Colors.AMBER_700),
         ft.Row([
-            ft.ElevatedButton("Weekly Report", on_click=create_pdf),
-            ft.ElevatedButton("Monthly Report", on_click=create_pdf),
+            ft.ElevatedButton("Weekly Report", on_click=lambda _: page.launch_url("/weekly_report.pdf")),
+            ft.ElevatedButton("Monthly Report", on_click=lambda _: page.launch_url("/monthly_report.pdf")),
         ], alignment=ft.MainAxisAlignment.CENTER),
         ft.Divider(),
         tool_list,
@@ -149,10 +137,8 @@ def main(page: ft.Page):
     refresh_dashboard()
 
 if __name__ == "__main__":
-    # Ensure the uploads folder exists
     if not os.path.exists("uploads"):
         os.makedirs("uploads")
-        
     port = int(os.getenv("PORT", 8000))
-    # 'upload_dir' is required for the FilePicker to work on Render
+    # 'upload_dir' MUST be set for the upload command to work
     ft.app(target=main, view=None, port=port, upload_dir="uploads")
