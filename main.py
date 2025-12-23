@@ -1,14 +1,12 @@
 import flet as ft
 import cv2
-from qreader import QReader
 import database as db
 import reports  # Handles the PDF generation logic
 import os
 import sqlite3
 from datetime import datetime
 
-# Initialize the reader once globally to keep the app fast
-reader = QReader()
+# NOTE: QReader and pyzbar are removed to avoid Linux library errors
 
 
 def main(page: ft.Page):
@@ -105,23 +103,25 @@ def main(page: ft.Page):
         page.dialog.open = True
         page.update()
 
-    # --- UPDATED: Web-Compatible Scanner Logic ---
+    # --- THE UPDATED SCANNER: Pure OpenCV Logic ---
     def open_scanner(e):
         cap = cv2.VideoCapture(0)
+        # Use built-in detector that doesn't need external libraries
+        detector = cv2.QRCodeDetector()
         found_qr = None
+
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            # Use qreader to detect and decode
-            # It returns a list of results, we take the first one
-            results = reader.detect_and_decode(image=frame)
-            if results and results[0]:
-                found_qr = results[0]
+            # Use OpenCV detector directly
+            data, bbox, _ = detector.detectAndDecode(frame)
+            if data:
+                found_qr = data
                 break
 
-            cv2.imshow("TrackTool Scanner (Q to Quit)", frame)
+            # Note: Preview works locally but is not needed on server
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
@@ -175,7 +175,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     import os
 
-    # Render assigns a port via this environment variable
+    # Port binding for Render environment
     port = int(os.getenv("PORT", 8000))
-    # view=None ensures the app starts as a web server only
+    # Starting as a pure web server
     ft.app(target=main, view=None, port=port)

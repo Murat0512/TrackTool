@@ -1,5 +1,4 @@
 flet
 flet-web
 opencv-python-headless
-qreader
 reportlab
