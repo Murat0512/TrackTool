@@ -14,10 +14,10 @@ def main(page: ft.Page):
     page.window_width = 450
     detector = cv2.QRCodeDetector()
 
-    # --- 1. DEFINE UI COMPONENTS FIRST ---
+    # --- 1. DEFINE UI COMPONENTS ---
     tool_list = ft.ListView(expand=True, spacing=10)
 
-    # --- 2. DEFINE HELPER FUNCTIONS (Order matters to prevent "not defined" errors) ---
+    # --- 2. DEFINE HELPER FUNCTIONS ---
 
     def refresh_dashboard():
         tool_list.controls.clear()
@@ -35,7 +35,6 @@ def main(page: ft.Page):
     def create_pdf(e):
         report_type = e.control.text.split()[0]
         filename = reports.generate_report(report_type)
-        # Web-safe way to handle files without static_dir
         page.launch_url(f"/{filename}")
         page.snack_bar = ft.SnackBar(ft.Text(f"Opening {filename}..."))
         page.snack_bar.open = True
@@ -92,27 +91,44 @@ def main(page: ft.Page):
             db.update_tool_status(qr_id, "Warehouse", "Available", None)
             refresh_dashboard()
 
+    # --- 3. CORRECTED UPLOAD & SCAN LOGIC ---
     def on_scan_result(e: ft.FilePickerResultEvent):
         if e.files:
-            page.snack_bar = ft.SnackBar(ft.Text("Scanning..."))
+            page.snack_bar = ft.SnackBar(ft.Text("Uploading and Scanning..."))
             page.snack_bar.open = True
             page.update()
+
+            try:
+                # STEP 1: Upload the file to the server
+                for f in e.files:
+                    page.upload_files(
+                        [ft.FilePickerUploadFile(f.name, upload_url=page.get_upload_url(f.name, 600))]
+                    )
+                    
+                    # STEP 2: Wait briefly and define the path correctly
+                    # We check the 'uploads' folder directly
+                    path = os.path.join("uploads", f.name)
+                    
+                    # STEP 3: Read and Decode
+                    img = cv2.imread(path)
+                    if img is not None:
+                        data, _, _ = detector.detectAndDecode(img)
+                        if data:
+                            handle_scanned_tool(data)
+                        else:
+                            page.snack_bar = ft.SnackBar(ft.Text("QR not detected. Try a closer photo."), bgcolor=ft.Colors.RED)
+                    
+                    # STEP 4: Cleanup to keep server light
+                    if os.path.exists(path):
+                        os.remove(path)
             
-            for f in e.files:
-                # Use f.path for local/desktop and fallback for web
-                path = f.path if f.path else f.name
-                img = cv2.imread(path)
-                if img is not None:
-                    data, _, _ = detector.detectAndDecode(img)
-                    if data:
-                        handle_scanned_tool(data)
-                    else:
-                        page.snack_bar = ft.SnackBar(ft.Text("QR not detected. Try a clearer photo."), bgcolor=ft.Colors.RED)
-                else:
-                    page.snack_bar = ft.SnackBar(ft.Text("Error reading image file."), bgcolor=ft.Colors.RED)
+            except Exception as ex:
+                print(f"Scan Error: {ex}")
+            
+            page.snack_bar.open = False
             page.update()
 
-    # --- 3. INITIALIZE PICKER & UI ---
+    # Initialize Picker
     scan_picker = ft.FilePicker(on_result=on_scan_result)
     page.overlay.append(scan_picker)
 
@@ -133,6 +149,10 @@ def main(page: ft.Page):
     refresh_dashboard()
 
 if __name__ == "__main__":
+    # Ensure the uploads folder exists
+    if not os.path.exists("uploads"):
+        os.makedirs("uploads")
+        
     port = int(os.getenv("PORT", 8000))
-    # Removed problematic static_dir to fix deployment crash
-    ft.app(target=main, view=None, port=port)
+    # 'upload_dir' is required for the FilePicker to work on Render
+    ft.app(target=main, view=None, port=port, upload_dir="uploads")
