@@ -166,7 +166,7 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     import os
-
-    # Use the port Render provides, or default to 8000 for local testing
+    # Render assigns a dynamic port; we must use it.
     port = int(os.getenv("PORT", 8000))
+    # We use view=None to tell Flet to act purely as a web server.
     ft.app(target=main, view=None, port=port)
